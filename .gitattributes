@@ -1,0 +1,8 @@
+# 服务器上直接执行的脚本必须是 LF，否则 bash 报 "bad interpreter"
+*.sh   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+
+# 二进制不要做换行转换
+*.png  binary
+*.gif  binary

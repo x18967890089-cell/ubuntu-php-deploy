@@ -1,0 +1,66 @@
+name: 部署失败
+description: 脚本在服务器上报错、站点打不开、或配置不符合预期
+title: "[部署] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先跑一次 `--dry-run`，确认不是参数问题：
+        ```bash
+        bash deploy.sh --app-dir /你的站点目录 --dry-run
+        ```
+        报错时请贴**完整命令 + 完整报错**，不要只贴最后一行。
+  - type: input
+    id: distro
+    attributes:
+      label: 系统版本
+      description: "`cat /etc/os-release | grep PRETTY_NAME` 的输出"
+      placeholder: Ubuntu 24.04.1 LTS
+    validations:
+      required: true
+  - type: input
+    id: php
+    attributes:
+      label: PHP 版本
+      description: "`php -v | head -1`，或你传给 `--php` 的值"
+      placeholder: PHP 8.3.6
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: 执行的命令
+      description: 连 `sudo bash deploy.sh ...` 一起贴，参数别省略
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: 完整输出
+      description: 从第一行 `[deploy]` 开始贴到报错为止
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 卡在哪一步
+      options:
+        - 参数校验就退出
+        - apt-get 安装失败
+        - nginx -t 失败
+        - 服务起来了但访问 502/403
+        - 自检 HTTP 码不是 2xx/3xx
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: nginx
+    attributes:
+      label: nginx 错误日志（有的话）
+      description: '`tail -n 50 /var/log/nginx/error.log`'
+      render: shell
+    validations:
+      required: false
