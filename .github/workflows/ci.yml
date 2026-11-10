@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint (bash -n + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: bash -n deploy.sh
+
+      - name: shellcheck (errors only)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck --version
+          shellcheck -S error -s bash deploy.sh
+
+      - name: --help / --version / --print-config must work without root
+        run: |
+          bash deploy.sh --help | head -n 5
+          bash deploy.sh --version
+          bash deploy.sh --app-dir /tmp/example --port 8080 --domain _ --print-config | grep -q 'fastcgi_pass'
+
+  e2e:
+    name: e2e (real deploy on ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare a throwaway site
+        run: |
+          sudo rm -rf /tmp/ci-site
+          sudo cp -r examples/ci-site /tmp/ci-site
+          sudo chown -R root:root /tmp/ci-site
+          sudo find /tmp/ci-site -maxdepth 3 -type f -print
+
+      - name: Dry run first
+        run: >
+          sudo bash deploy.sh
+          --app-dir /tmp/ci-site --port 8080 --domain _
+          --db-init init.php --health / --dry-run
+
+      - name: Deploy for real
+        run: >
+          sudo bash deploy.sh
+          --app-dir /tmp/ci-site --port 8080 --domain _
+          --db-init init.php --health /
+
+      - name: Assert the site answers and sqlite is writable
+        run: |
+          body="$(curl -fsS --max-time 10 http://127.0.0.1:8080/)"
+          echo "body: $body"
+          echo "$body" | grep -q 'CI_OK'
+          test -s /tmp/ci-site/database/app.db
+          sudo -u www-data test -w /tmp/ci-site/database
+
+      - name: Re-run must be idempotent
+        run: >
+          sudo bash deploy.sh
+          --app-dir /tmp/ci-site --port 8080 --domain _
+          --db-init init.php --health /
+          && curl -fsS --max-time 10 http://127.0.0.1:8080/ | grep -q 'CI_OK'
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          sudo tail -n 80 /var/log/nginx/error.log || true
+          sudo systemctl status nginx --no-pager || true
+          sudo systemctl status "php*-fpm" --no-pager || true
