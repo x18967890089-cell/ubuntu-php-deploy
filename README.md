@@ -1,5 +1,7 @@
 # ubuntu-php-deploy
 
+[![ci](https://github.com/x18967890089-cell/ubuntu-php-deploy/actions/workflows/ci.yml/badge.svg)](https://github.com/x18967890089-cell/ubuntu-php-deploy/actions/workflows/ci.yml)
+
 **一条命令把 PHP 站点部署到 Ubuntu/Debian 的 nginx + php-fpm，幂等、可 dry-run、不写死任何项目和凭据。**
 
 从「上传了代码但站点打不开」到可以访问，中间有十几步：装 nginx、装 php-fpm、写 server 块、配 fastcgi、改目录权限、放行端口、验证。这个脚本把这些步骤收成一条命令，并且可以重复执行——第二次跑只改有变化的部分。
@@ -39,6 +41,33 @@ $ bash deploy.sh --app-dir /var/www/my-site --domain example.com --dry-run
 ```bash
 bash deploy.sh --app-dir /var/www/my-site --domain example.com --php 8.3 --print-config
 ```
+
+## 持续集成（真机跑通，不是"理论上能跑"）
+
+`.github/workflows/ci.yml` 在 **GitHub 托管的 ubuntu-latest 上真装 nginx + php-fpm 跑一遍**，公开构建日志可查：
+
+| 任务 | 做什么 | 判定 |
+|---|---|---|
+| `lint` | `bash -n`、`shellcheck -S error`、以及 `--help` / `--version` / `--print-config` 三个不需要 root 的路径 | 全部退出码 0 |
+| `e2e` | 复制 `examples/ci-site` 到 `/tmp/ci-site`，`sudo bash deploy.sh --port 8080` 真部署 | 输出 `HTTP 200`、`部署完成` |
+| `e2e` 断言 | `curl 127.0.0.1:8080` 正文含 `CI_OK`、`database/app.db` 存在且 `www-data` 可写 | 断言失败即红 |
+| `e2e` 幂等 | 同一个 `--app-dir` **再跑一遍** `deploy.sh`，站点仍然 200 | 第二次不能把好的改坏 |
+
+最近一次 `e2e` 的关键输出（[run 42854592088](https://github.com/x18967890089-cell/ubuntu-php-deploy/actions/runs/42854592088)）：
+
+```
+[deploy] 探测到 PHP 版本：8.5
+[deploy] 安装 nginx 与 PHP 组件…
+  ok    mbstring
+  ok    pdo_sqlite
+[deploy] 执行初始化脚本：init.php
+init ok: 1 hits
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+[deploy] 本机自检：http://127.0.0.1:8080/
+  ok   HTTP 200
+```
+
+也就是说：**不需要自己准备一台 Linux 机器**。要复现，把仓库 fork 一下或点 Actions → `ci` → `Run workflow` 即可；想在自己的服务器上跑，照着 `examples/ci-site` 的目录形状（`public/` 放 web 入口、`init.php` 建库）改 `--app-dir` 就行。
 
 ## 快速开始
 
@@ -108,7 +137,7 @@ sudo certbot --nginx -d example.com
 
 ## 已知限制
 
-- **只在 Ubuntu 24.04 上设计，本机没有 Linux 服务器，未经真机跑通**：目前验证的是 bash 语法、`--help`、`--print-config`、`--dry-run` 与参数校验。第一次在你服务器上执行请先 `--dry-run` 看命令，再真跑。
+- **在 GitHub 托管的 ubuntu-latest 上真机跑通**（见上一节，装 nginx + PHP 8.5、写 server 块、`HTTP 200`、二次执行仍 200），但那是干净的 CI 机器：你自己的服务器可能已有 nginx 站点、旧 PHP 版本或宝塔/aaPanel 接管，第一次执行请先 `--dry-run` 看命令再真跑。
 - 只管 nginx + php-fpm。Apache、Caddy、Docker、宝塔面板不适用。
 - 不负责代码传输（git/scp/rsync 自己来），也不负责 DNS、备案、证书。
 - 不做数据库安装（除了 PHP 的 sqlite 扩展），MySQL/PostgreSQL 要自己装。
